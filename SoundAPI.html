@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audio Player</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #111;
+      color: #eee;
+      font-family: sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      background: #1c1c1c;
+      border: 1px solid #2e2e2e;
+      border-radius: 6px;
+      padding: 30px 24px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    h1 {
+      font-size: 14px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #c8a84b;
+      margin-bottom: 20px;
+    }
+
+    /* file input */
+    .load-section {
+      margin-bottom: 24px;
+    }
+
+    .load-section label {
+      display: inline-block;
+      padding: 8px 16px;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #aaa;
+      cursor: pointer;
+    }
+
+    .load-section label:hover {
+      border-color: #c8a84b;
+      color: #c8a84b;
+    }
+
+    #audioFile {
+      display: none;
+    }
+
+    #trackName {
+      display: block;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    /* canvas visualiser */
+    canvas {
+      display: block;
+      width: 100%;
+      height: 80px;
+      border-radius: 4px;
+      background: #141414;
+      margin-bottom: 22px;
+    }
+
+    /* play / pause */
+    .play-section {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .play-section button {
+      flex: 1;
+      padding: 10px;
+      background: #c8a84b;
+      color: #111;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .play-section button:hover {
+      background: #dab84f;
+    }
+
+    .play-section button:disabled {
+      background: #333;
+      color: #666;
+      cursor: not-allowed;
+    }
+
+    /* volume */
+    .volume-section {
+      margin-bottom: 20px;
+    }
+
+    .volume-section label {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .volume-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background: #c8a84b;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      background: #c8a84b;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    #volDisplay {
+      font-size: 12px;
+      color: #888;
+      min-width: 30px;
+      text-align: right;
+    }
+
+    /* mute */
+    .mute-section {
+      margin-bottom: 0;
+    }
+
+    #muteBtn {
+      width: 100%;
+      padding: 9px;
+      background: transparent;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      color: #aaa;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    #muteBtn:hover {
+      border-color: #888;
+      color: #eee;
+    }
+
+    #muteBtn.muted {
+      border-color: #a33;
+      color: #e55;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>Audio Player</h1>
+
+    <!-- 1. Load audio file -->
+    <div class="load-section">
+      <label for="audioFile">&#8593; Load audio file</label>
+      <input type="file" id="audioFile" accept="audio/*" />
+      <span id="trackName">No file loaded</span>
+    </div>
+
+    <!-- Web Audio API visualiser -->
+    <canvas id="visualiser" width="372" height="80"></canvas>
+
+    <!-- 2. Play and Pause buttons -->
+    <div class="play-section">
+      <button id="playBtn" disabled>Play</button>
+      <button id="pauseBtn" disabled>Pause</button>
+    </div>
+
+    <!-- 3. Volume slider -->
+    <div class="volume-section">
+      <label for="volumeSlider">Volume</label>
+      <div class="volume-row">
+        <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1" />
+        <span id="volDisplay">100%</span>
+      </div>
+    </div>
+
+    <!-- Additional feature: Mute / Unmute -->
+    <div class="mute-section">
+      <button id="muteBtn">Mute</button>
+    </div>
+  </div>
+
+  <audio id="audioEl"></audio>
+
+  <script>
+    // ── elements ──────────────────────────────────────────
+    const audioEl      = document.getElementById('audioEl');
+    const fileInput    = document.getElementById('audioFile');
+    const trackName    = document.getElementById('trackName');
+    const playBtn      = document.getElementById('playBtn');
+    const pauseBtn     = document.getElementById('pauseBtn');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volDisplay   = document.getElementById('volDisplay');
+    const muteBtn      = document.getElementById('muteBtn');
+    const canvas       = document.getElementById('visualiser');
+    const ctx          = canvas.getContext('2d');
+
+    // ── Web Audio API setup ───────────────────────────────
+    let audioCtx, analyser, source, animId;
+    let isMuted = false;
+    let prevVol = 1;
+
+    function setupAudioContext() {
+      // only create once
+      if (audioCtx) return;
+
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+
+      // GainNode gives us programmatic volume control via Web Audio
+      gainNode = audioCtx.createGain();
+
+      source = audioCtx.createMediaElementSource(audioEl);
+      source.connect(gainNode);
+      gainNode.connect(analyser);
+      analyser.connect(audioCtx.destination);
+    }
+
+    // ── visualiser draw loop ──────────────────────────────
+    function drawBars() {
+      animId = requestAnimationFrame(drawBars);
+
+      const bufferLen = analyser.frequencyBinCount;
+      const dataArr   = new Uint8Array(bufferLen);
+      analyser.getByteFrequencyData(dataArr);
+
+      const W = canvas.width;
+      const H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const barW   = Math.floor(W / bufferLen) - 1;
+      let x = 0;
+
+      for (let i = 0; i < bufferLen; i++) {
+        const barH = (dataArr[i] / 255) * H;
+        ctx.fillStyle = '#c8a84b';
+        ctx.fillRect(x, H - barH, barW, barH);
+        x += barW + 1;
+      }
+    }
+
+    // idle flat line when nothing is playing
+    function drawIdle() {
+      const W = canvas.width;
+      const H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      ctx.strokeStyle = '#2e2e2e';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, H / 2);
+      ctx.lineTo(W, H / 2);
+      ctx.stroke();
+    }
+
+    drawIdle();
+
+    // ── file load ─────────────────────────────────────────
+    fileInput.addEventListener('change', function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      const url = URL.createObjectURL(file);
+      audioEl.src = url;
+
+      // show filename, strip extension
+      trackName.textContent = file.name.replace(/\.[^.]+$/, '');
+
+      playBtn.disabled  = false;
+      pauseBtn.disabled = false;
+
+      // reset mute state on new file
+      isMuted = false;
+      audioEl.muted = false;
+      muteBtn.textContent = 'Mute';
+      muteBtn.classList.remove('muted');
+    });
+
+    // ── play ──────────────────────────────────────────────
+    playBtn.addEventListener('click', function () {
+      // AudioContext must be created/resumed after a user gesture
+      setupAudioContext();
+
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      audioEl.play();
+      cancelAnimationFrame(animId);
+      drawBars();
+    });
+
+    // ── pause ─────────────────────────────────────────────
+    pauseBtn.addEventListener('click', function () {
+      audioEl.pause();
+      cancelAnimationFrame(animId);
+      drawIdle();
+    });
+
+    audioEl.addEventListener('ended', function () {
+      cancelAnimationFrame(animId);
+      drawIdle();
+    });
+
+    // ── volume slider ─────────────────────────────────────
+    volumeSlider.addEventListener('input', function () {
+      const val = parseFloat(this.value);
+      audioEl.volume = val;
+      volDisplay.textContent = Math.round(val * 100) + '%';
+
+      // if user drags volume up while muted, unmute
+      if (isMuted && val > 0) {
+        isMuted = false;
+        audioEl.muted = false;
+        muteBtn.textContent = 'Mute';
+        muteBtn.classList.remove('muted');
+      }
+    });
+
+    // ── mute / unmute ─────────────────────────────────────
+    muteBtn.addEventListener('click', function () {
+      isMuted = !isMuted;
+
+      if (isMuted) {
+        prevVol = parseFloat(volumeSlider.value);
+        audioEl.muted = true;
+        muteBtn.textContent = 'Unmute';
+        muteBtn.classList.add('muted');
+      } else {
+        audioEl.muted = false;
+        muteBtn.textContent = 'Mute';
+        muteBtn.classList.remove('muted');
+      }
+    });
+  </script>
+
+</body>
+</html>
